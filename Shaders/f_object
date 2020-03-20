@@ -1,0 +1,130 @@
+#version 330 core
+
+#define n_pl 2
+#define n_dl 1
+#define n_sl 1
+
+struct Material{
+    sampler2D diffuse;
+    sampler2D specular;
+    float shininess;
+};
+
+struct PointLight{
+    vec3 position;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+
+    float a;
+    float b;
+};
+
+struct DirectLight{
+    vec3 direct;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+struct SpotLight{
+    vec3 position;
+    vec3 direct;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+
+    float a;
+    float b;
+    float inR;
+    float exR;
+};
+
+in vec2 tex;
+in vec3 Normal;
+in vec3 fragPos;
+
+out vec4 color;
+
+uniform sampler2D ourTexture;
+uniform Material material;
+uniform PointLight pointLight[n_pl];
+uniform DirectLight directLight[n_dl];
+uniform SpotLight spotLight[n_sl];
+uniform vec3 cameraPos;
+
+vec3 calcPointLight(PointLight light);
+vec3 calcDirectLight(DirectLight light);
+vec3 calcSpotLight(SpotLight light);
+
+void main() {
+    vec3 result = vec3(0.0f);
+
+    for(int i = 0; i < n_pl; ++i){
+        result += calcPointLight(pointLight[i]);
+    }
+
+    for(int i = 0; i < n_dl; ++i){
+        result += calcDirectLight(directLight[i]);
+    }
+
+    for(int i = 0; i < n_sl; ++i){
+        result += calcSpotLight(spotLight[i]);
+    }
+
+    color = vec4(result, 1.0f) * texture(ourTexture, tex);
+}
+
+vec3 calcPointLight(PointLight light){
+    vec3 ambient = light.ambient * vec3(texture(material.diffuse, tex));
+
+    vec3 lightDirect = light.position - fragPos;
+    float diff = max(dot(normalize(lightDirect), Normal), 0.0f);
+    vec3 diffuse = light.diffuse * diff * vec3(texture(material.diffuse, tex));
+
+    vec3 viewDirect = normalize(cameraPos - fragPos);
+    vec3 reflectDirect = reflect(-normalize(lightDirect), Normal);
+    float spec = pow(max(dot(reflectDirect, viewDirect), 0.0f), material.shininess);
+    vec3 specular = light.specular * spec * vec3(texture(material.specular, tex));
+
+    float distance = length(lightDirect);
+    float intense = 1.0f / (1.0f + light.b * distance + light.a * pow(distance, 2));
+
+    return intense * (ambient + diffuse + specular);
+}
+
+vec3 calcDirectLight(DirectLight light){
+    vec3 ambient = light.ambient * vec3(texture(material.diffuse, tex));
+
+    vec3 lightDirect = normalize(-light.direct);
+    float diff = max(dot(lightDirect, Normal), 0.0f);
+    vec3 diffuse = light.diffuse * diff * vec3(texture(material.diffuse, tex));
+
+    vec3 viewDirect = normalize(cameraPos - fragPos);
+    vec3 reflectDirect = reflect(-lightDirect, Normal);
+    float spec = pow(max(dot(reflectDirect, viewDirect), 0.0f), material.shininess);
+    vec3 specular = light.specular * spec * vec3(texture(material.specular, tex));
+
+    return (ambient + diffuse + specular);
+}
+
+vec3 calcSpotLight(SpotLight light){
+    vec3 ambient = light.ambient * vec3(texture(material.diffuse, tex));
+
+    vec3 lightDirect = light.position - fragPos;
+    float diff = max(dot(normalize(lightDirect), Normal), 0.0f);
+    vec3 diffuse = light.diffuse * diff * vec3(texture(material.diffuse, tex));
+
+    vec3 viewDirect = normalize(cameraPos - fragPos);
+    vec3 reflectDirect = reflect(-normalize(lightDirect), Normal);
+    float spec = pow(max(dot(reflectDirect, viewDirect), 0.0f), material.shininess);
+    vec3 specular = light.specular * spec * vec3(texture(material.specular, tex));
+
+    float distance = length(lightDirect);
+    float intense = 1.0f / (1.0f + light.b * distance + light.a * pow(distance, 2));
+
+    float theta = dot(normalize(lightDirect), normalize(light.direct));
+    float grad = clamp((theta - light.exR) / (light.inR - light.exR), 0.0f, 1.0f);
+
+    return intense * (ambient + grad * (diffuse + specular));
+}
